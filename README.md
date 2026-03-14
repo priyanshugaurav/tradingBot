@@ -1,8 +1,10 @@
-# NexusTrade: Advanced Multi-Strategy AI Trading Bot
+# TradeBot: Advanced Multi-Strategy AI Trading Bot
 
-NexusTrade is a sophisticated trading platform that combines traditional technical analysis with modern machine learning to automate cryptocurrency trading. It features a high-performance Python backend and a real-time React dashboard.
+TradeBot is a sophisticated trading platform that combines traditional technical analysis with modern machine learning to automate cryptocurrency trading. It features a high-performance Python backend and a real-time React dashboard.
 
-## 🚀 Key Features
+![TradeBot Dashboard](https://github.com/priyanshugaurav/tradingBot/raw/main/screenshots/dashboard_main.png)
+
+## Key Features
 
 - **Multi-Strategy Fusion**: Combines 8+ technical indicators into a single composite signal.
 - **AI-Powered Predictions**: Uses a Gradient Boosting + Random Forest ensemble for directional bias.
@@ -13,7 +15,7 @@ NexusTrade is a sophisticated trading platform that combines traditional technic
 
 ---
 
-## 🧠 Backend Engine & Strategies
+## Backend Engine & Strategies
 
 The backend is built with **FastAPI** and **SQLAlchemy**, featuring a modular bot engine (`bot_engine.py`) that handles signal generation and trade execution.
 
@@ -33,7 +35,7 @@ Signals are normalized and combined with **Pattern Detection** (Head & Shoulders
 
 ---
 
-## 🤖 Machine Learning (ML)
+## Machine Learning (ML)
 
 The `ml_predictor.py` module implements a sophisticated learning pipeline:
 
@@ -45,7 +47,7 @@ The `ml_predictor.py` module implements a sophisticated learning pipeline:
 
 ---
 
-## 🛰️ Market Scanner
+## Market Scanner
 
 The `market_scanner.py` performs high-speed parallel analysis:
 - **Scope**: Monitors the top 100-120 high-volume USDT pairs on Binance.
@@ -54,7 +56,7 @@ The `market_scanner.py` performs high-speed parallel analysis:
 
 ---
 
-## 💻 Frontend Architecture
+## Frontend Architecture
 
 A premium, responsive dashboard built with **React**, **Vite**, and **Tailwind CSS**.
 
@@ -66,7 +68,7 @@ A premium, responsive dashboard built with **React**, **Vite**, and **Tailwind C
 
 ---
 
-## 🛠️ Setup & Installation
+## Setup & Installation
 
 ### Backend
 1. Navigate to `/backend`:
@@ -86,5 +88,5 @@ A premium, responsive dashboard built with **React**, **Vite**, and **Tailwind C
 
 ---
 
-## 🛡️ Disclaimer
+## Disclaimer
 This software is for educational purposes only. Do not trade with real money unless you fully understand the risks involved. The authors are not responsible for any financial losses.

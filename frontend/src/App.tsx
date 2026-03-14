@@ -178,7 +178,7 @@ export default function App() {
               <Activity className="w-4 h-4 text-emerald-400" />
             </div>
             <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-              NexusTrade
+            TradeBot
             </h1>
           </div>
           <button className="md:hidden text-zinc-400" onClick={() => setMobileMenuOpen(false)}>
