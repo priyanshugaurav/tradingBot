@@ -20,7 +20,7 @@ import market_scanner as ms
 # ── Initialize DB ─────────────────────────────────────────────────────────────
 models.Base.metadata.create_all(bind=database.engine)
 
-app = FastAPI(title="NexusTrade Bot API V2")
+app = FastAPI(title="TradeBot API V2")
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,7 +40,7 @@ async def startup_event():
         db.add(models.Portfolio(balance=10000.0))
         db.commit()
     db.close()
-    el.log("NexusTrade V2 started — paper trading engine ready", el.EventType.SYSTEM, el.EventSeverity.SUCCESS)
+    el.log("TradeBot started — paper trading engine ready", el.EventType.SYSTEM, el.EventSeverity.SUCCESS)
     asyncio.create_task(bot_engine.trade_loop())
 
 

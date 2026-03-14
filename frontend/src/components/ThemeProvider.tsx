@@ -23,7 +23,7 @@ const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
 export function ThemeProvider({
   children,
   defaultTheme = 'dark', // Defaults to dark to match the premium aesthetic
-  storageKey = 'nexustrade-ui-theme',
+  storageKey = 'tradebot-ui-theme',
   ...props
 }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(
