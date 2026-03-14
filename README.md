@@ -2,7 +2,7 @@
 
 TradeBot is a sophisticated trading platform that combines traditional technical analysis with modern machine learning to automate cryptocurrency trading. It features a high-performance Python backend and a real-time React dashboard.
 
-![TradeBot Dashboard](https://github.com/priyanshugaurav/tradingBot/raw/main/screenshots/dashboard_main.png)
+![TradeBot Dashboard](https://github.com/priyanshugaurav/tradingBot/raw/main/screenshots/dashboard.png)
 
 ## Key Features
 
