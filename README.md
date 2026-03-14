@@ -1,5 +1,8 @@
 # 🤖 TradeBot: Advanced Binance Futures Trading Suite
 
+> [!NOTE]
+> This is a small version of my own trading bot with almost every feature, including Binance demo account connection and paper trading capabilities.
+
 TradeBot is a high-performance trading ecosystem designed for the **Binance Futures Testnet (USDT-M)**. It combines institutional-grade market analysis, machine learning directional bias, and a premium real-time dashboard to provide a complete trading solution.
 
 ---
