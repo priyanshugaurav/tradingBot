@@ -5,7 +5,7 @@ import asyncio
 import json
 import queue
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Dict
 import random
 
 from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
@@ -78,15 +78,31 @@ def get_trades(status: Optional[str] = None, limit: int = 200, db: Session = Dep
     return q.order_by(models.Trade.entry_time.desc()).limit(limit).all()
 
 
-@app.post("/api/trades/execute")
-def execute_manual_trade(req: schemas.TradeManualExecute, db: Session = Depends(database.get_db)):
+@app.get("/api/binance/account")
+async def get_binance_account():
+    from bot_engine import binance_testnet_client
     try:
-        trade = bot_engine.execute_manual_trade(req.symbol, req.side.upper(), req.amount_usd, db)
+        balance = await binance_testnet_client.get_account_balance()
+        return {"connected": True, "balance": balance, "asset": "USDT"}
+    except Exception as e:
+        return {"connected": False, "error": str(e)}
+
+@app.post("/api/trades/execute")
+async def handle_manual_trade(req: schemas.TradeManualExecute, db: Session = Depends(database.get_db)):
+    try:
+        trade = await bot_engine.execute_manual_trade(req.symbol, req.side.upper(), req.amount_usd, db)
         if not trade:
             raise HTTPException(400, "Trade failed (insufficient balance or invalid symbol)")
         return trade
     except Exception as e:
         raise HTTPException(500, str(e))
+
+@app.post("/api/trades/{trade_id}/close")
+async def close_trade(trade_id: int, db: Session = Depends(database.get_db)):
+    success = await bot_engine.close_manual_trade(trade_id, db)
+    if not success:
+        raise HTTPException(404, "Trade not found or already closed")
+    return {"status": "success"}
 
 
 @app.post("/api/backtest/random")
@@ -122,6 +138,7 @@ def update_config(update: schemas.BotConfigUpdate):
     cfg = bot_engine.bot_config
     data = update.dict(exclude_none=True)
     cfg.update(data)
+    bot_engine.save_config()
     el.log(f"Bot config updated: {data}", el.EventType.SYSTEM, el.EventSeverity.INFO)
     return cfg
 
@@ -129,6 +146,7 @@ def update_config(update: schemas.BotConfigUpdate):
 @app.post("/api/bot/toggle")
 def toggle_bot():
     bot_engine.bot_config["trading_enabled"] = not bot_engine.bot_config["trading_enabled"]
+    bot_engine.save_config()
     state = bot_engine.bot_config["trading_enabled"]
     el.log(
         f"Bot {'STARTED ▶' if state else 'STOPPED ■'}",

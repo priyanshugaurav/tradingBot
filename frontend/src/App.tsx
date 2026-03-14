@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { api, WS_URL } from './api';
-import type { BotEvent, Trade, ScanResult } from './api';
+import type { BotEvent, Trade, ScanResult, BinanceAccount, BotConfig } from './api';
 import LiveLog from './components/LiveLog';
 import ScannerPanel from './components/ScannerPanel';
 import ActiveTrades from './components/ActiveTrades';
@@ -35,7 +35,8 @@ export default function App() {
   const [patterns, setPatterns] = useState<Record<string, any[]>>({});
   const [strategies, setStrategies] = useState<Record<string, any>>({});
   const [performance, setPerformance] = useState<any>(null);
-  const [botConfig, setBotConfig] = useState<any>(null);
+  const [botConfig, setBotConfig] = useState<BotConfig | null>(null);
+  const [binanceAccount, setBinanceAccount] = useState<BinanceAccount | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -73,6 +74,13 @@ export default function App() {
   }, [connectWS]);
 
   // ── REST polling ──────────────────────────────────────────────────────────
+  const fetchBinance = useCallback(async () => {
+    try {
+      const r = await api.getBinanceAccount();
+      setBinanceAccount(r.data);
+    } catch { }
+  }, []);
+
   const fetchAll = useCallback(async () => {
     try {
       const [tradesR, cfgR, perfR, stratR, predsR, patsR] = await Promise.allSettled([
@@ -89,8 +97,12 @@ export default function App() {
       if (stratR.status === 'fulfilled') setStrategies(stratR.value.data);
       if (predsR.status === 'fulfilled') setPredictions(predsR.value.data);
       if (patsR.status === 'fulfilled') setPatterns(patsR.value.data);
+      
+      if (cfgR.status === 'fulfilled' && cfgR.value.data.mode === 'BINANCE_TESTNET') {
+        fetchBinance();
+      }
     } catch { }
-  }, []);
+  }, [fetchBinance]);
 
   const fetchScanner = useCallback(async () => {
     try {
@@ -129,11 +141,15 @@ export default function App() {
     } catch { }
   };
 
-  const updateTimeframe = async (tf: string) => {
+  const updateConfig = async (data: Partial<BotConfig>) => {
     try {
-      await api.updateConfig({ timeframe: tf });
+      await api.updateConfig(data);
       fetchAll();
     } catch { }
+  };
+
+  const updateTimeframe = async (tf: string) => {
+    await updateConfig({ timeframe: tf });
   };
 
   const toggleStrategy = async (key: string) => {
@@ -245,23 +261,56 @@ export default function App() {
             </button>
           </div>
 
-          {/* Quick Stats (Desktop) */}
-          <div className="hidden lg:flex items-center gap-6 text-sm bg-white/[0.02] border border-white/5 rounded-full px-5 py-1.5">
-            <div className="flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-zinc-500" />
-              <span className="font-mono text-zinc-400">Bal: <span className="text-zinc-100 font-bold">${balance.toFixed(2)}</span></span>
-              <button onClick={handleFund} className="ml-2 text-[9px] font-bold tracking-widest bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 px-2 py-1 rounded-md transition-all">
-                ADD
+          {/* Stats & Mode */}
+          <div className="hidden lg:flex items-center gap-4 text-sm bg-white/[0.02] border border-white/5 rounded-full px-5 py-1.5">
+            {/* Mode Switcher */}
+            <div className="flex bg-[#09090b] p-1 rounded-xl border border-white/10 shadow-inner">
+              <button
+                onClick={() => updateConfig({ mode: 'PAPER' })}
+                className={`px-4 py-1.5 rounded-lg text-[10px] font-bold tracking-widest transition-all duration-300 ${botConfig?.mode === 'PAPER' ? 'bg-emerald-500 text-zinc-950 shadow-lg shadow-emerald-500/20' : 'text-zinc-500 hover:text-zinc-300'}`}
+              >
+                PAPER
+              </button>
+              <button
+                onClick={() => updateConfig({ mode: 'BINANCE_TESTNET' })}
+                className={`px-3 py-1 rounded-md text-[10px] font-bold tracking-widest transition-all ${botConfig?.mode === 'BINANCE_TESTNET' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20' : 'text-zinc-500 hover:text-zinc-300'}`}
+              >
+                BINANCE
               </button>
             </div>
+
             <div className="w-px h-4 bg-white/10" />
+
+            <div className="flex items-center gap-2">
+              <Wallet className={`w-4 h-4 ${botConfig?.mode === 'BINANCE_TESTNET' ? 'text-amber-400' : 'text-zinc-500'}`} />
+              {botConfig?.mode === 'BINANCE_TESTNET' ? (
+                <>
+                  <span className="font-mono text-zinc-400">Net: <span className="text-amber-400 font-bold">${binanceAccount?.balance?.toFixed(2) || '0.00'}</span></span>
+                  {binanceAccount?.error && (
+                    <span className="text-[8px] text-red-500 ml-1 truncate max-w-[100px]" title={binanceAccount.error}>ERR: {binanceAccount.error}</span>
+                  )}
+                </>
+              ) : (
+                <span className="font-mono text-zinc-400">Bal: <span className="text-zinc-100 font-bold">${balance.toFixed(2)}</span></span>
+              )}
+              {botConfig?.mode === 'PAPER' && (
+                <button onClick={handleFund} className="ml-2 text-[9px] font-bold tracking-widest bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 px-2 py-1 rounded-md transition-all">
+                  ADD
+                </button>
+              )}
+            </div>
+            
+            <div className="w-px h-4 bg-white/10" />
+            
             <div className="flex items-center gap-2">
               <span className="font-mono text-zinc-400">PNL:</span>
               <span className={`font-bold font-mono ${totalPnl >= 0 ? 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.3)]' : 'text-red-400'}`}>
                 {totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}
               </span>
             </div>
+
             <div className="w-px h-4 bg-white/10" />
+
             <div className="flex items-center gap-2">
               <span className="font-mono text-zinc-400">Win Rate: <span className="text-zinc-100 font-bold">{winRate}%</span></span>
             </div>
@@ -411,8 +460,9 @@ export default function App() {
                           try { await api.updateConfig({ mode: e.target.value }); fetchAll(); } catch { }
                         }}
                       >
-                        <option value="LIVE">LIVE DATA</option>
-                        <option value="SIMULATION">SIMULATION (BACKTEST)</option>
+                        <option value="PAPER">PAPER TRADING (SIMULATED)</option>
+                        <option value="BINANCE_TESTNET">BINANCE TESTNET (LIVE)</option>
+                        <option value="SIMULATION">HISTORICAL SIMULATION</option>
                       </select>
                     </div>
 

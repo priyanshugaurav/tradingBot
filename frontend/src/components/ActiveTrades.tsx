@@ -1,12 +1,24 @@
 import type { Trade } from '../api';
-import { TrendingUp, TrendingDown, Brain, Shield, Crosshair } from 'lucide-react';
+import { TrendingUp, TrendingDown, Brain, Shield, Crosshair, XCircle, Loader2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useState } from 'react';
+import { api } from '../api';
 
-function TradeCard({ trade }: { trade: Trade }) {
+function TradeCard({ trade, onClose }: { trade: Trade; onClose?: (id: number) => Promise<void> }) {
+  const [closing, setClosing] = useState(false);
   const isOpen = trade.status === 'OPEN';
   const isBuy = trade.side === 'BUY';
   const pnlColor = (trade.pnl ?? 0) >= 0 ? 'text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.3)]' : 'text-red-400';
+
+  const handleClose = async () => {
+    if (!onClose) return;
+    setClosing(true);
+    try {
+      await onClose(trade.id);
+    } finally {
+      setClosing(false);
+    }
+  };
 
   return (
     <div className={`relative p-5 rounded-2xl border transition-all duration-300 group hover:shadow-xl ${isOpen
@@ -33,12 +45,26 @@ function TradeCard({ trade }: { trade: Trade }) {
             </span>
           )}
         </div>
-        <span className={`text-[9px] font-bold tracking-widest uppercase px-2 py-1 rounded-md border ${isOpen
-          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-          : 'bg-white/5 text-zinc-500 border-white/5'
-          }`}>
-          {trade.status}
-        </span>
+        <div className="flex items-center gap-2">
+          {isOpen && onClose && (
+            <button
+              onClick={handleClose}
+              disabled={closing}
+              className={`text-[9px] font-bold tracking-widest uppercase px-3 py-1 rounded-md border transition-all flex items-center gap-1.5 
+                ${closing ? 'bg-zinc-800 text-zinc-500 border-zinc-700' : 'bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20 hover:border-red-500/40'}`}
+              title="Close position manually"
+            >
+              {closing ? <Loader2 className="w-3 h-3 animate-spin" /> : <XCircle className="w-3 h-3" />}
+              {closing ? 'CLOSING...' : 'CLOSE'}
+            </button>
+          )}
+          <span className={`text-[9px] font-bold tracking-widest uppercase px-2 py-1 rounded-md border ${isOpen
+            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+            : 'bg-white/5 text-zinc-500 border-white/5'
+            }`}>
+            {trade.status}
+          </span>
+        </div>
       </div>
 
       {/* ── DATA GRID ── */}
@@ -134,6 +160,14 @@ export default function ActiveTrades({
     onExecuteTrade(exeSymbol.toUpperCase() + '/USDT', exeSide, Number(exeAmount));
   };
 
+  const handleCloseTrade = async (id: number) => {
+    try {
+      await api.closeTrade(id);
+    } catch (err) {
+      console.error('Failed to close trade:', err);
+    }
+  };
+
   return (
     <div className="space-y-10">
 
@@ -208,7 +242,7 @@ export default function ActiveTrades({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {openTrades.map(t => <TradeCard key={t.id} trade={t} />)}
+            {openTrades.map(t => <TradeCard key={t.id} trade={t} onClose={handleCloseTrade} />)}
           </div>
         )}
       </div>

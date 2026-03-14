@@ -7,6 +7,7 @@ export const api = {
   getPortfolio:   () => axios.get(`${API_URL}/portfolio`),
   fundPortfolio:  (amount: number) => axios.post(`${API_URL}/portfolio/fund`, { amount }),
   getTrades:      (status?: string) => axios.get(`${API_URL}/trades`, { params: { status, limit: 200 } }),
+  closeTrade:     (id: number) => axios.post(`${API_URL}/trades/${id}/close`),
   executeTrade:   (symbol: string, side: string, amount_usd: number) => axios.post(`${API_URL}/trades/execute`, { symbol, side, amount_usd }),
   getLogs:        (limit = 200) => axios.get(`${API_URL}/logs`, { params: { limit } }),
   getBotConfig:   () => axios.get(`${API_URL}/bot/config`),
@@ -19,6 +20,7 @@ export const api = {
   getStrategies:  () => axios.get(`${API_URL}/strategies`),
   getPerformance: () => axios.get(`${API_URL}/performance`),
   getChart:       (symbol: string, timeframe = '15m') => axios.get(`${API_URL}/chart`, { params: { symbol, timeframe } }),
+  getBinanceAccount: () => axios.get(`${API_URL}/binance/account`),
   resetDatabase:  () => axios.post(`${API_URL}/admin/reset-db`),
 };
 
@@ -70,4 +72,28 @@ export interface ScanResult {
   volume_ratio: number;
   atr_pct: number;
   scanned_at: string;
+}
+
+export interface BotConfig {
+  trading_enabled: boolean;
+  strategy: string;
+  timeframe: string;
+  min_signal_score: number;
+  max_risk_per_trade_pct: number;
+  max_open_positions: number;
+  mode: 'PAPER' | 'BINANCE_TESTNET' | 'SIMULATION' | 'LIVE';
+  strategy_weights: Record<string, number>;
+  scan_enabled: boolean;
+  trailing_sl_enabled: boolean;
+  active_strategies?: string[];
+  symbols?: string[];
+  sim_speed?: number;
+  sim_start_date?: number | null;
+}
+
+export interface BinanceAccount {
+  connected: boolean;
+  balance?: number;
+  asset?: string;
+  error?: string;
 }

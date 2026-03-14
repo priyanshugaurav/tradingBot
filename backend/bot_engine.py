@@ -23,37 +23,59 @@ _exchange = ccxt.binance({
     'timeout': 30000,
 })
 
-# ── Global bot state (read/written by main.py) ────────────────────────────────
+from binance_bot.client import BinanceFuturesClient
+binance_testnet_client = BinanceFuturesClient()
+
+# Bot state and configuration
 bot_config = {
     "trading_enabled": False,
-    "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT"],
+    "strategy": "FUSION",  # FUSION, ML, or INDIVIDUAL_NAME
     "timeframe": "15m",
-    "max_risk_per_trade_pct": 10.0,
-    "max_open_positions": 100,
-    "daily_drawdown_limit_pct": 100.0,
+    "min_signal_score": 60,
+    "max_risk_per_trade_pct": 10,  # % of balance
+    "max_open_positions": 10,
+    "mode": "PAPER",           # PAPER, BINANCE_TESTNET, or SIMULATION
     "strategy_weights": {
-        "ema_crossover":  1.0,
+        "ema_crossover": 1.0,
         "advanced_oscillators": 1.5,
-        "macd":           1.0,
-        "bollinger":      1.0,
-        "volume_surge":   1.0,
-        "ml_prediction":  1.5,
-        "vwap":           1.0,
-        "supertrend":     1.5,
-        "ichimoku":       1.0,
+        "macd": 1.0,
+        "bollinger": 1.0,
+        "volume_surge": 1.0,
+        "ml_prediction": 1.5,
+        "vwap": 1.0,
+        "supertrend": 1.5,
+        "ichimoku": 1.0,
     },
-    "min_signal_score": 60.0,
     "scan_enabled": True,
     "trailing_sl_enabled": True,
-    "mode": "LIVE",
-    "sim_speed": 1,
-    "sim_start_date": None,
-    "active_strategies": [
-        "ema_crossover", "advanced_oscillators", "macd", 
-        "bollinger", "volume_surge", "ml_prediction", 
-        "vwap", "supertrend", "ichimoku"
-    ]
+    "leverage": 20, 
+    "symbols": ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT"],
 }
+
+CONFIG_FILE = "bot_config.json"
+
+def save_config():
+    try:
+        # Don't save trading_enabled as True to avoid auto-start on crash/restart
+        to_save = bot_config.copy()
+        to_save["trading_enabled"] = False 
+        with open(CONFIG_FILE, "w") as f:
+            json.dump(to_save, f, indent=4)
+    except Exception: pass
+
+def load_config():
+    global bot_config
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                saved = json.load(f)
+                bot_config.update(saved)
+        except Exception: pass
+
+# Initial load
+import json
+import os
+load_config()
 
 # ── In-memory analytics ───────────────────────────────────────────────────────
 strategy_stats: Dict[str, Dict] = {
@@ -441,7 +463,7 @@ def _get_atr(df: pd.DataFrame) -> float:
     return df["ATRr_14"].iloc[-1]
 
 
-def execute_trade(symbol: str, action: str, signal: Dict, df: pd.DataFrame, db: Session, timestamp: Optional[datetime] = None):
+async def execute_trade(symbol: str, action: str, signal: Dict, df: pd.DataFrame, db: Session, timestamp: Optional[datetime] = None):
     portfolio = db.query(models.Portfolio).first()
     if not portfolio:
         return
@@ -456,51 +478,126 @@ def execute_trade(symbol: str, action: str, signal: Dict, df: pd.DataFrame, db: 
         el.log(f"Insufficient balance for {symbol}", el.EventType.RISK, el.EventSeverity.WARNING, symbol)
         return
 
+    # Determine mode
+    mode = bot_config.get("mode", "PAPER")
+
+    # Execution (Real vs Paper)
+    if mode == "BINANCE_TESTNET":
+        try:
+            await binance_testnet_client.place_order(
+                symbol=symbol,
+                side=action,
+                order_type="MARKET",
+                quantity=qty
+            )
+        except Exception as e:
+            el.log(f"Binance {action} failed: {e}", el.EventType.ERROR, el.EventSeverity.DANGER, symbol)
+            return None
+
     trade = models.Trade(
-        symbol      = symbol,
-        side        = action,
-        entry_price = price,
-        quantity    = qty,
-        stop_loss   = sl,
-        take_profit = tp,
-        reason      = f"Score={signal['score']} | {signal.get('dominant_pattern',{}).get('name','') if signal.get('dominant_pattern') else ''}",
-        signals_json = str(signal["signals"]),
+        symbol        = symbol,
+        side          = action,
+        type          = "MARKET",
+        mode          = mode,
+        entry_price   = price,
+        quantity      = qty,
+        stop_loss     = sl,
+        take_profit   = tp,
+        reason        = f"Score={signal['score']} | {signal.get('dominant_pattern',{}).get('name','') if signal.get('dominant_pattern') else ''}",
+        signals_json  = str(signal["signals"]),
         ml_confidence = signal["prediction"]["confidence"],
         ml_direction  = signal["prediction"]["direction"],
         entry_time    = timestamp if timestamp else datetime.now()
     )
-    portfolio.balance -= cost
+    
+    # Only deduct from Paper Portfolio if in PAPER/SIMULATION mode
+    if mode in ["PAPER", "SIMULATION"]:
+        portfolio.balance -= cost
+        
     db.add(trade)
     db.commit()
     db.refresh(trade)
 
+    prefix = "PAPER" if mode != "BINANCE_TESTNET" else "BINANCE"
     el.log(
-        f"PAPER {action}: {symbol} @ ${price:.4f}  Qty={qty:.4f}  SL=${sl:.4f}  TP=${tp:.4f}",
+        f"{prefix} {action}: {symbol} @ ${price:.4f}  Qty={qty:.4f}  SL=${sl:.4f}  TP=${tp:.4f}",
         el.EventType.TRADE, el.EventSeverity.SUCCESS, symbol,
         detail=f"Score={signal['score']} | Pattern={signal.get('dominant_pattern',{}).get('name','None') if signal.get('dominant_pattern') else 'None'} | ML={signal['prediction']['direction']} {signal['prediction']['confidence']*100:.1f}%"
     )
     return trade
 
 
-def execute_manual_trade(symbol: str, side: str, amount_usd: float, db: Session):
+def _calculate_sl_tp(symbol: str, side: str, price: float):
+    """Synchronous wrapper for computing SL/TP for manual trades."""
+    # We use a dummy DF since compute_sl_tp needs it for ATR, 
+    # but for manual trades we can fallback to a fixed % or fetch minimal ATR.
+    # For now, let's use the standard ATR-based compute_sl_tp but handle the DF.
+    try:
+        # Try to get from cache first
+        df = ohlcv_cache.get(symbol)
+        if df is not None and not df.empty:
+            return compute_sl_tp(price, side, df)
+    except:
+        pass
+        
+    # Fallback to fixed percentages if no DF available (e.g., 2% SL, 4% TP)
+    if side == "BUY":
+        return round(price * 0.98, 6), round(price * 1.04, 6)
+    else:
+        return round(price * 1.02, 6), round(price * 0.96, 6)
+
+
+async def execute_manual_trade(symbol: str, side: str, amount_usd: float, db: Session):
     portfolio = db.query(models.Portfolio).first()
     if not portfolio or portfolio.balance < amount_usd:
         return None
 
+    # Determine trading mode
+    mode = bot_config.get("mode", "PAPER")
+    
+    if mode == "BINANCE_TESTNET":
+        if not binance_testnet_client.is_valid_symbol(symbol):
+            el.log(f"Manual {side} failed: Symbol {symbol} not supported on Binance Testnet.", el.EventType.ERROR, el.EventSeverity.DANGER, symbol)
+            return None
+
     # Fetch latest price
-    df = fetch_ohlcv(symbol, bot_config["timeframe"], limit=50)
+    df = await fetch_ohlcv(symbol, bot_config["timeframe"], limit=50)
     if df is None or df.empty:
         return None
 
     price = df["close"].iloc[-1]
-    qty = amount_usd / price
+    leverage = bot_config.get("leverage", 1)
+    qty = (amount_usd * leverage) / price
     
-    # Calculate default SL/TP based on ATR
-    sl, tp = compute_sl_tp(price, side, df)
+    # Determine trading mode
+    mode = bot_config.get("mode", "PAPER")
+    
+    # Check if we should actually execute on Binance
+    binance_response = None
+    if mode == "BINANCE_TESTNET":
+        try:
+            # Place order on Binance Testnet
+            binance_response = await binance_testnet_client.place_order(
+                symbol=symbol,
+                side=side,
+                order_type="MARKET",
+                quantity=qty
+            )
+            # Use actual fill price if available, otherwise fallback to current close
+            price = float(binance_response.get('price', price)) if binance_response.get('price') and float(binance_response.get('price')) > 0 else price
+        except Exception as e:
+            el.log(f"Binance {side} failed: {str(e)}", el.EventType.ERROR, el.EventSeverity.DANGER, symbol)
+            return None
 
+    # Calculate SL/TP
+    sl, tp = _calculate_sl_tp(symbol, side, price)
+    
+    # Create DB record
     trade = models.Trade(
         symbol      = symbol,
         side        = side,
+        type        = "MARKET",
+        mode        = mode,
         entry_price = price,
         quantity    = qty,
         stop_loss   = sl,
@@ -523,10 +620,11 @@ def execute_manual_trade(symbol: str, side: str, amount_usd: float, db: Session)
     return trade
 
 
-def check_sl_tp(db: Session, current_prices: Dict[str, float]):
+async def check_sl_tp(db: Session, current_prices: Dict[str, float]):
     """Check all open trades for stop-loss, take-profit, or trailing stop hits."""
     open_trades = db.query(models.Trade).filter(models.Trade.status == "OPEN").all()
     portfolio   = db.query(models.Portfolio).first()
+    mode = bot_config.get("mode", "PAPER")
 
     for trade in open_trades:
         price = current_prices.get(trade.symbol)
@@ -569,39 +667,80 @@ def check_sl_tp(db: Session, current_prices: Dict[str, float]):
 
         if hit_sl or hit_tp:
             is_tsl = hit_sl and trade.is_trailing_active
-            pnl = (price - trade.entry_price) * trade.quantity if trade.side == "BUY" \
-                  else (trade.entry_price - price) * trade.quantity
-
-            trade.exit_price = price
-            trade.pnl        = pnl
-            trade.status     = "CLOSED"
-            trade.exit_time  = datetime.utcnow()
-            
             reason_suffix = "TP HIT ✅" if hit_tp else ("TSL HIT 🛡️" if is_tsl else "SL HIT ❌")
-            trade.reason    += f" | {reason_suffix}"
+            
+            await _close_trade_logic(trade, price, reason_suffix, db)
 
-            portfolio.balance += price * trade.quantity
-            db.commit()
 
-            severity = el.EventSeverity.SUCCESS if pnl > 0 else el.EventSeverity.DANGER
-            el.log(
-                f"{reason_suffix} {trade.symbol}: PNL ${pnl:+.4f}",
-                el.EventType.TRADE, severity, trade.symbol,
-                detail=f"Entry=${trade.entry_price:.4f} Exit=${price:.4f} Peak=${trade.highest_price:.4f}"
+async def _close_trade_logic(trade: models.Trade, price: float, reason_suffix: str, db: Session):
+    """Internal helper to handle the actual mechanics of closing a trade."""
+    pnl = (price - trade.entry_price) * trade.quantity if trade.side == "BUY" \
+          else (trade.entry_price - price) * trade.quantity
+
+    trade.exit_price = price
+    trade.pnl        = pnl
+    trade.status     = "CLOSED"
+    trade.exit_time  = datetime.utcnow()
+    trade.reason    += f" | {reason_suffix}"
+
+    # Only close on Binance if the trade record itself was a Binance trade
+    if trade.mode == "BINANCE_TESTNET":
+        try:
+            await binance_testnet_client.place_order(
+                symbol=trade.symbol,
+                side="SELL" if trade.side == "BUY" else "BUY",
+                order_type="MARKET",
+                quantity=trade.quantity,
+                reduce_only=True
             )
+        except Exception as e:
+            el.log(f"Failed to close Binance position for {trade.symbol}: {e}", el.EventType.ERROR, el.EventSeverity.DANGER, trade.symbol)
+            # We still mark CLOSED in DB so the bot doesn't loop forever on a dead trade, 
+            # but the error log will alert the user to manually check Binance.
+    
+    portfolio = db.query(models.Portfolio).first()
+    if portfolio:
+        portfolio.balance += price * trade.quantity
+        
+    db.commit()
 
-            # ML learning feedback
-            try:
-                hist_df = ohlcv_cache.get(trade.symbol)
-                if hist_df is not None:
-                    mlp.record_outcome(hist_df, pnl > 0)
-                    if pnl > 0:
-                        el.log(f"ML model updated — profitable trade learned for {trade.symbol}", el.EventType.LEARNING, el.EventSeverity.INFO, trade.symbol)
-            except Exception:
-                pass
+    severity = el.EventSeverity.SUCCESS if pnl > 0 else el.EventSeverity.DANGER
+    peak_str = f"${trade.highest_price:.4f}" if trade.highest_price else "N/A"
+    el.log(
+        f"{reason_suffix} {trade.symbol}: PNL ${pnl:+.4f}",
+        el.EventType.TRADE, severity, trade.symbol,
+        detail=f"Entry=${trade.entry_price:.4f} Exit=${price:.4f} Peak={peak_str}"
+    )
 
-            # Update strategy weights (reinforcement learning)
-            _update_strategy_weights(trade, pnl > 0)
+    # ML learning feedback
+    try:
+        hist_df = ohlcv_cache.get(trade.symbol)
+        if hist_df is not None:
+            mlp.record_outcome(hist_df, pnl > 0)
+            if pnl > 0:
+                el.log(f"ML model updated — profitable trade learned for {trade.symbol}", el.EventType.LEARNING, el.EventSeverity.INFO, trade.symbol)
+    except Exception:
+        pass
+
+    # Update strategy weights (reinforcement learning)
+    _update_strategy_weights(trade, pnl > 0)
+
+
+async def close_manual_trade(trade_id: int, db: Session):
+    """Manually close a specific trade by ID."""
+    trade = db.query(models.Trade).filter(models.Trade.id == trade_id, models.Trade.status == "OPEN").first()
+    if not trade:
+        return False
+        
+    # Fetch current price
+    df = await fetch_ohlcv(trade.symbol, bot_config["timeframe"], limit=5)
+    if df is None or df.empty:
+        return False
+        
+    price = df["close"].iloc[-1]
+    await _close_trade_logic(trade, price, "MANUAL CLOSE ✋", db)
+    return True
+
 
 
 def _update_strategy_weights(trade: models.Trade, won: bool):
@@ -661,7 +800,14 @@ async def _init_simulation(db: Session):
 
 async def trade_loop():
     scan_counter = 0
+    pause_log_counter = 0
     el.log("Bot engine V2 initialized", el.EventType.SYSTEM, el.EventSeverity.INFO)
+
+    # Move initialization here (within event loop)
+    try:
+        await binance_testnet_client.initialize()
+    except Exception as e:
+        el.log(f"Binance Client Init Failed: {e}", el.EventType.ERROR, el.EventSeverity.DANGER)
 
     while True:
         try:
@@ -710,13 +856,13 @@ async def trade_loop():
                                     models.Trade.symbol == symbol, models.Trade.status == "OPEN"
                                 ).first()
                                 if not existing:
-                                    execute_trade(symbol, "BUY", signal, df, db, timestamp=sim_time)
+                                    await execute_trade(symbol, "BUY", signal, df, db, timestamp=sim_time)
 
                     # Update step
                     sim_context["index"] += 1
                     
                     # Check SL/TP using simulated prices
-                    check_sl_tp(db, current_prices)
+                    await check_sl_tp(db, current_prices)
                     db.close()
                     
                     # Variable sleep based on sim_speed
@@ -748,6 +894,11 @@ async def trade_loop():
                     current_prices = {}
 
                     for symbol in list(symbols):
+                        # Filter for Binance mode
+                        if bot_config["mode"] == "BINANCE_TESTNET":
+                            if not binance_testnet_client.is_valid_symbol(symbol):
+                                continue # Skip untradable symbols for this env
+
                         df = await fetch_ohlcv(symbol, bot_config["timeframe"])
                         if df is None:
                             continue
@@ -772,16 +923,21 @@ async def trade_loop():
                                     models.Trade.symbol == symbol, models.Trade.status == "OPEN"
                                 ).first()
                                 if not existing:
-                                    execute_trade(symbol, "BUY", signal, df, db)
+                                    await execute_trade(symbol, "BUY", signal, df, db)
 
                     # Check SL/TP
-                    check_sl_tp(db, current_prices)
+                    await check_sl_tp(db, current_prices)
                     db.close()
+                    
+                    # Heartbeat log to show it's actually finishing a cycle
+                    el.log(f"Trading Cycle Complete — {len(symbols)} symbols processed", el.EventType.SYSTEM, el.EventSeverity.INFO)
                     await asyncio.sleep(30)
 
             else:
-                el.log("Bot is paused. Enable trading to start.", el.EventType.SYSTEM, el.EventSeverity.INFO)
-                await asyncio.sleep(5)
+                if pause_log_counter % 20 == 0:
+                    el.log("Bot is paused. Trading engine idling...", el.EventType.SYSTEM, el.EventSeverity.INFO)
+                pause_log_counter += 1
+                await asyncio.sleep(10)
 
         except Exception as e:
             el.log(f"Bot loop error: {e}", el.EventType.ERROR, el.EventSeverity.DANGER)

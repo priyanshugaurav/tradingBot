@@ -8,6 +8,8 @@ class Trade(Base):
     id             = Column(Integer, primary_key=True, index=True)
     symbol         = Column(String, index=True)
     side           = Column(String)
+    type           = Column(String, default="MARKET")
+    mode           = Column(String, default="PAPER")
     entry_price    = Column(Float)
     exit_price     = Column(Float, nullable=True)
     quantity       = Column(Float)

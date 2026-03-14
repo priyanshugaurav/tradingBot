@@ -12,7 +12,10 @@ from datetime import datetime
 import event_log as el
 
 
-exchange = ccxt.binance({'enableRateLimit': True})
+exchange = ccxt.binance({
+    'enableRateLimit': True,
+    'options': {'defaultType': 'future'}
+})
 
 _scan_results: List[Dict] = []
 _last_scan: Optional[str] = None
@@ -23,13 +26,23 @@ async def get_top_symbols(limit: int = 120) -> List[str]:
     """Fetch top USDT pairs by 24h volume. Offloaded to thread."""
     try:
         tickers = await asyncio.to_thread(exchange.fetch_tickers)
-        usdt_pairs = [
-            (sym, data["quoteVolume"])
-            for sym, data in tickers.items()
-            if sym.endswith("/USDT") and data.get("quoteVolume")
-        ]
+        # Filters for USDT pairs that are active
+        usdt_pairs = []
+        for sym, data in tickers.items():
+            if sym.endswith("/USDT") or sym.endswith(":USDT"):
+                quote_vol = data.get("quoteVolume")
+                if quote_vol is not None:
+                    vol = float(quote_vol)
+                else:
+                    base_vol = data.get("baseVolume") or 0
+                    last_price = data.get("last") or 0
+                    vol = float(base_vol) * float(last_price)
+                
+                if vol > 0:
+                    usdt_pairs.append((sym, vol))
+                    
         usdt_pairs.sort(key=lambda x: x[1], reverse=True)
-        # Exclude stablecoins
+        # Exclude stablecoins and weird test symbols
         stables = {"BUSD/USDT", "USDC/USDT", "TUSD/USDT", "DAI/USDT", "FDUSD/USDT"}
         return [sym for sym, _ in usdt_pairs if sym not in stables][:limit]
     except Exception as e:

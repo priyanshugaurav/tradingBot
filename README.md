@@ -1,17 +1,20 @@
-# TradeBot: Advanced Multi-Strategy AI Trading Bot
+# TradeBot: Binance Futures Testnet Trading Bot
 
-TradeBot is a sophisticated trading platform that combines traditional technical analysis with modern machine learning to automate cryptocurrency trading. It features a high-performance Python backend and a real-time React dashboard.
+TradeBot is a Python-based trading application designed for the Binance Futures Testnet (USDT-M). It features a structured API layer, a robust CLI for manual orders, and an automated multi-strategy bot engine with a real-time React dashboard.
 
-![TradeBot Dashboard](https://github.com/priyanshugaurav/tradingBot/raw/main/screenshots/dashboard.png)
+## Task Submission Details
+- **Candidate Objective**: Build a simplified trading bot for Binance Futures Testnet.
+- **Key Deliverables**: Public repository, Market/Limit order support, CLI interface, and structured logging.
 
 ## Key Features
 
-- **Multi-Strategy Fusion**: Combines 8+ technical indicators into a single composite signal.
-- **AI-Powered Predictions**: Uses a Gradient Boosting + Random Forest ensemble for directional bias.
-- **Market Scanner**: Automatically scans top 100+ USDT pairs on Binance to find high-probability setups.
-- **Risk Management**: ATR-based position sizing, automated SL/TP, and intelligent Trailing Stop-Loss.
-- **Paper Trading & Simulation**: Test strategies in real-time or via accelerated historical simulations.
-- **Real-Time Dashboard**: Beautiful glassmorphic UI with WebSocket-driven live updates.
+- **Binance Futures Testnet Integration**: Real-time order placement (Market & Limit) on USDT-M futures.
+- **Dual Mode**: Switch between Paper Trading (internal simulation) and Binance Testnet in one click.
+- **Manual Trade Execution (USD-based)**: Execute trades by specifying the USD amount. The bot handles leverage (default 20x) and quantity calculations automatically to match Binance requirements.
+- **One-Click Manual Closure**: Close any open position directly from the dashboard with the new "CLOSE" button.
+- **Robust CLI**: Complete command-line interface for placing orders and validating inputs.
+- **Structured Logging**: All API requests, responses, and errors are logged to `backend/logs/tradebot.log`.
+- **AI-Powered Insights**: (Bonus) Multi-strategy signal fusion and ML-based directional bias.
 
 ---
 
@@ -68,25 +71,53 @@ A premium, responsive dashboard built with **React**, **Vite**, and **Tailwind C
 
 ---
 
-## Setup & Installation
+## Setup & Execution
 
-### Backend
-1. Navigate to `/backend`:
-   ```bash
-   pip install -r requirements.txt
-   python main.py
-   ```
-2. The API will run on `http://localhost:8000`.
+### 1. Prerequisites
+- Python 3.9+
+- Binance Futures Testnet API Key & Secret ([Register here](https://testnet.binancefuture.com))
 
-### Frontend
-1. Navigate to `/frontend`:
-   ```bash
-   npm install
-   npm run dev
-   ```
-2. Open `http://localhost:5173` in your browser.
+### 2. Installation
+```bash
+git clone https://github.com/priyanshugaurav/tradingBot.git
+cd tradingBot/backend
+pip install -r requirements.txt
+```
+
+### 3. Configuration
+Create a `.env` file in the `backend/` directory:
+```env
+BINANCE_API_KEY=your_testnet_api_key
+BINANCE_API_SECRET=your_testnet_api_secret
+```
+
+### 4. Running the Bot
+#### CLI Interface (Task Requirement)
+```bash
+# Place a Market BUY order
+python cli.py place --symbol BTCUSDT --side BUY --type MARKET --qty 0.01
+
+# Place a Limit SELL order
+python cli.py place --symbol ETHUSDT --side SELL --type LIMIT --qty 0.1 --price 3500
+```
+
+### 5. GUI Mode Switching (New)
+You can now shift between simulation and live testnet trading directly from the dashboard:
+1. Locate the **Mode Toggle** in the top header.
+2. Select **PAPER** for risk-free local simulation using the internal engine.
+3. Select **BINANCE** to connect to the Binance Futures Testnet.
+   - The bot will fetch your real Testnet balance and display it as **Net: $X.XX**.
+   - All orders (Market/Limit) will be routed to the Binance Testnet API.
+   - Ensure your `.env` is configured for this mode to work.
+
+---
+
+## Assumptions
+- Uses USDT-M (USDT-margined) futures exclusively.
+- Quantity is specified in base asset units (e.g., BTC, ETH).
+- Logging follows the structured format requested in the task.
 
 ---
 
 ## Disclaimer
-This software is for educational purposes only. Do not trade with real money unless you fully understand the risks involved. The authors are not responsible for any financial losses.
+Educational purpose only. Trade at your own risk.

@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pydantic import BaseModel
 from datetime import datetime
 
@@ -10,10 +10,24 @@ class TradeCreate(BaseModel):
     entry_price: float
 
 
+class BotConfig(BaseModel):
+    trading_enabled: bool
+    strategy: str
+    timeframe: str
+    min_signal_score: float
+    max_risk_per_trade_pct: float
+    max_open_positions: int
+    mode: str = "PAPER"
+    strategy_weights: Dict[str, float]
+    scan_enabled: bool = True
+    trailing_sl_enabled: bool = True
+
 class Trade(BaseModel):
     id: int
     symbol: str
     side: str
+    type: str
+    mode: str = "PAPER"
     quantity: float
     entry_price: float
     exit_price: Optional[float] = None

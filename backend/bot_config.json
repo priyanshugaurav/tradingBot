@@ -1,0 +1,29 @@
+{
+    "trading_enabled": false,
+    "strategy": "FUSION",
+    "timeframe": "15m",
+    "min_signal_score": 60.0,
+    "max_risk_per_trade_pct": 10,
+    "max_open_positions": 10,
+    "mode": "BINANCE_TESTNET",
+    "strategy_weights": {
+        "ema_crossover": 1.0,
+        "advanced_oscillators": 1.5,
+        "macd": 1.0,
+        "bollinger": 1.0,
+        "volume_surge": 1.0,
+        "ml_prediction": 1.5,
+        "vwap": 1.0,
+        "supertrend": 1.5,
+        "ichimoku": 1.0
+    },
+    "scan_enabled": true,
+    "trailing_sl_enabled": true,
+    "symbols": [
+        "BTCUSDT",
+        "ETHUSDT",
+        "BNBUSDT",
+        "SOLUSDT",
+        "ADAUSDT"
+    ]
+}
